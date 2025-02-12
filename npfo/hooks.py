@@ -122,13 +122,33 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
+doc_events = {
 # 	"*": {
 # 		"on_update": "method",
 # 		"on_cancel": "method",
 # 		"on_trash": "method"
 # 	}
-# }
+
+
+    "Employee":{
+        "on_update":"npfo.npfo.custom_script.employee.employee.create_salary_structure_through_employee"
+    },
+    "Employee Checkin":{
+        "after_insert":"npfo.npfo.custom_script.attandance.attandance.get_attendance"
+    },
+    # "Salary Slip":
+        # {
+        # "before_insert":"npfo.npfo.custom_script.attandance.attandance.get_ot_hours_pay"
+        # },
+    "Leave Allocation":{
+        "before_insert":"npfo.npfo.custom_script.leave_appilcation.leave_appication.alert_for_leave_appication"
+        },
+    "Salary Structure Assignment":{
+        "before_save":["npfo.npfo.custom_script.employee.employee.salary_asiignment"]
+}    
+
+
+}
 
 # Scheduled Tasks
 # ---------------
