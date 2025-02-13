@@ -136,10 +136,10 @@ doc_events = {
     "Employee Checkin":{
         "after_insert":"npfo.npfo.custom_script.attandance.attandance.get_attendance"
     },
-    # "Salary Slip":
-        # {
-        # "before_insert":"npfo.npfo.custom_script.attandance.attandance.get_ot_hours_pay"
-        # },
+    "Salary Slip":
+        {
+        "before_insert":"npfo.npfo.custom_script.attandance.attandance.get_ot_hours_pay"
+        },
     "Leave Allocation":{
         "before_insert":"npfo.npfo.custom_script.leave_appilcation.leave_appication.alert_for_leave_appication"
         },

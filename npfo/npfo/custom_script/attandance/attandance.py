@@ -1,9 +1,9 @@
 
 import frappe
-from datetime import datetime, timedelta,timezone
+from datetime import datetime, timedelta
 from frappe.utils import get_first_day, get_last_day, date_diff,get_datetime,format_datetime,get_time
-from datetime import timedelta,timezone
-import datetime
+
+
 
 # @frappe.whitelist()
 def get_attendance(doc,method):
@@ -164,254 +164,275 @@ def calculate_total_hours(attendance_doc, checkin_date):
 
 
 
+from datetime import datetime, timedelta
+
+@frappe.whitelist()
+def get_ot_hours_pay(self, method = None):
+
+	try:	
+		# self = frappe.get_doc("Salary Slip",self)
+		employee_doc = frappe.get_doc("Employee", self.employee)
+
+		if not employee_doc:
+			frappe.throw("Employee details not found.")
+
+		if not employee_doc.holiday_list:
+			frappe.throw("Designation not found.")
+
+		attendance_records = frappe.get_all("Attendance", filters={
+			"employee": employee_doc.name,
+			"attendance_date": ["Between", [self.start_date, self.end_date]]
+		}, fields=['*'])
+
+		if not attendance_records:
+			frappe.throw("Attendance details not found.")
+			return
+
+		shift_type_doc = frappe.get_doc("Shift Type", employee_doc.default_shift)
+		if not shift_type_doc:
+			frappe.throw("Shift type not found in employee details.")
+			return
+
+		if employee_doc.custom_ot_eligibility == "Yes":
+			start_time = shift_type_doc.start_time
+			end_time = shift_type_doc.end_time
+			tome_dur = end_time - start_time
+			working_hours_total = 0
+			ot_hours_total = 0
+			holiday_list_doc = frappe.get_doc("Holiday List", employee_doc.holiday_list)
 
 
-# @frappe.whitelist()
-# def get_ot_hours_pay(self, method = None):
 
-# 	try:	
-# 		self = frappe.get_doc("Salary Slip",self)
-# 		employee_doc = frappe.get_doc("Employee", self.employee)
-
-# 		if not employee_doc:
-# 			frappe.throw("Employee details not found.")
-
-# 		if not employee_doc.holiday_list:
-# 			frappe.throw("Designation not found.")
-
-# 		attendance_records = frappe.get_all("Attendance", filters={
-# 			"employee": employee_doc.name,
-# 			"attendance_date": ["Between", [self.start_date, self.end_date]]
-# 		}, fields=['*'])
-
-# 		if not attendance_records:
-# 			frappe.throw("Attendance details not found.")
-# 			return
-
-# 		shift_type_doc = frappe.get_doc("Shift Type", employee_doc.default_shift)
-# 		if not shift_type_doc:
-# 			frappe.throw("Shift type not found in employee details.")
-# 			return
-
-# 		if employee_doc.custom_ot_eligibility == "Yes":
-# 			start_time = shift_type_doc.start_time
-# 			end_time = shift_type_doc.end_time
-# 			tome_dur = end_time - start_time
-# 			working_hours_total = 0
-# 			ot_hours_total = 0
-# 			holiday_list_doc = frappe.get_doc("Holiday List", employee_doc.holiday_list)
+			first_day = get_first_day(self.start_date)
+			last_day = get_last_day(self.start_date)
+			total_days_in_month = date_diff(last_day, first_day) + 1
+			holidays_in_month = [
+				holiday.holiday_date
+				for holiday in holiday_list_doc.holidays
+				if first_day <= holiday.holiday_date <= last_day
+			]
+			total_days_in_month -= len(holidays_in_month)
 
 
+			overlapping_attendance = [
+				att["attendance_date"] for att in attendance_records
+				if att["attendance_date"] in holidays_in_month
+			]
+			present_count = sum(1 for att in attendance_records if att["status"] == "Present")
+			medical_leave_records = [
+				att for att in attendance_records
+				if att["status"] == "On Leave" and att.get("leave_type") == "Medical Leave"
+			]
+			medical_leave_count = len(medical_leave_records)
+			total_present_and_medical_leave = present_count + medical_leave_count
 
-# 			first_day = get_first_day(self.start_date)
-# 			last_day = get_last_day(self.start_date)
-# 			total_days_in_month = date_diff(last_day, first_day) + 1
-# 			holidays_in_month = [
-# 				holiday.holiday_date
-# 				for holiday in holiday_list_doc.holidays
-# 				if first_day <= holiday.holiday_date <= last_day
-# 			]
-# 			total_days_in_month -= len(holidays_in_month)
-
-
-# 			overlapping_attendance = [
-# 				att["attendance_date"] for att in attendance_records
-# 				if att["attendance_date"] in holidays_in_month
-# 			]
-# 			present_count = sum(1 for att in attendance_records if att["status"] == "Present")
-# 			medical_leave_records = [
-# 				att for att in attendance_records
-# 				if att["status"] == "On Leave" and att.get("leave_type") == "Medical Leave"
-# 			]
-# 			medical_leave_count = len(medical_leave_records)
-# 			total_present_and_medical_leave = present_count + medical_leave_count
-
-# 			insetive_hour = 0
-# 			for record in attendance_records:
-# 				working_time = timedelta(hours=round(record.working_hours))
-# 				if record.attendance_date not in [holiday.holiday_date for holiday in holiday_list_doc.holidays]:
-# 					# insetive_hour+= 3
-# 					ot_hours_total += round(record.working_hours) - abs(round(tome_dur.total_seconds() / 3600.0, 2))
+			insetive_hour = 0
+			for record in attendance_records:
+				working_time = timedelta(hours=round(record.working_hours))
+				if record.attendance_date not in [holiday.holiday_date for holiday in holiday_list_doc.holidays]:
+					# insetive_hour+= 3
+					ot_hours_total += round(record.working_hours) - abs(round(tome_dur.total_seconds() / 3600.0, 2))
 					
-# 					if round(record.working_hours) > round(tome_dur.total_seconds() / 3600.0, 2):
-# 						# print(record.name,"------"*10,round(record.working_hours))
-# 						# return record.name
-# 						insetive_hour += 3
+					if round(record.working_hours) > round(tome_dur.total_seconds() / 3600.0, 2):
+						# print(record.name,"------"*10,round(record.working_hours))
+						# return record.name
+						insetive_hour += 3
 
-# 			if not holiday_list_doc:
-# 				frappe.throw("Holiday List not found in employee details.")
+			if not holiday_list_doc:
+				frappe.throw("Holiday List not found in employee details.")
 
-# 			base_amount = 0
-# 			insentve_basic = 0
-# 			if employee_doc.custom_ot_formula == "NOT" or employee_doc.custom_ot_formula == "BF/360":
+			base_amount = 0
+			insentve_basic = 0
+			if employee_doc.custom_ot_formula == "NOT" or employee_doc.custom_ot_formula == "BF/360":
 				
 	   
-# 				base_amount = sum(
-# 					next((amount.amount for amount in employee_doc.custom_earnings if amount.salary_component == component), 0)
-# 					for component in ["Basic Pay", "Food Allowance"]
-# 				)
+				base_amount = sum(
+					next((amount.amount for amount in employee_doc.custom_earnings if amount.salary_component == component), 0)
+					for component in ["Basic Pay", "Food Allowance"]
+				)
 			
 
-# 			if employee_doc.custom_ot_formula == "B/240" or employee_doc.custom_ot_formula == "B/300":
-# 				base_amount = next((amount.amount for amount in employee_doc.custom_earnings if amount.salary_component == "Basic Pay"), 0)
+			if employee_doc.custom_ot_formula == "B/240" or employee_doc.custom_ot_formula == "B/300":
+				base_amount = next((amount.amount for amount in employee_doc.custom_earnings if amount.salary_component == "Basic Pay"), 0)
 				
 			
 
 			
 
-# 			if employee_doc.custom_ot_formula == "NOT" or employee_doc.custom_ot_formula == "B/240":
-# 				if total_present_and_medical_leave >= total_days_in_month or len(overlapping_attendance)>2:
-# 						# attadance =get_employee_addision_salary(self)
-# 					pass
-# 				insentve_basic = base_amount /240
-# 				base_amount = base_amount / 240
-# 			if employee_doc.custom_ot_formula == "BF/360":
-# 				insentve_basic = base_amount /360
-# 				base_amount = base_amount / 360
-# 			if employee_doc.custom_ot_formula == "B/300":
-# 				insentve_basic = base_amount /300
-# 				base_amount = base_amount / 300
-		
+			if employee_doc.custom_ot_formula == "NOT" or employee_doc.custom_ot_formula == "B/240":
+				if total_present_and_medical_leave >= total_days_in_month or len(overlapping_attendance)>2:
+						attadance =get_employee_addision_salary(self)
+					# pass
+				insentve_basic = base_amount /240
+				base_amount = base_amount / 240
+			if employee_doc.custom_ot_formula == "BF/360":
+				insentve_basic = base_amount /360
+				base_amount = base_amount / 360
+			if employee_doc.custom_ot_formula == "B/300":
+				insentve_basic = base_amount /300
+				base_amount = base_amount / 300
+
+			calculate_ot_amount = 0
+			actuval_amount = 0
+			# Initialize counters for total before_21_count and after_21_count
+			total_before_21 = 0
+			total_after_21 = 0
+			comparison_time = datetime.strptime("21:00:00", "%H:%M:%S")
+			daily_hours = []
+
+			# Loop through the attendance records
+			for record in attendance_records:
+				# Check if the current attendance date is not a holiday
+				if record.attendance_date not in [holiday.holiday_date for holiday in holiday_list_doc.holidays]:
+					out_time = get_datetime(record.out_time)
+					out_time = get_time(out_time)  # Convert to time format
+
+					# Convert out_time to datetime object
+					fmt = "%H:%M:%S"
+					start = datetime.strptime("19:00:00", fmt)  # Shift ends at 19:00:00
+					end = datetime.strptime(str(out_time), fmt)  # Employee out time
+
+					# Calculate the total number of hours between shift end (19:00:00) and out_time
+					total_hours = int((end - start).total_seconds() // 3600)
+
+					before_21_count = 0  # Count of hours before 21:00
+					after_21_count = 0  # Count of hours after 21:00
+
+					# Check if out_time crosses 21:00
+					if end <= comparison_time:
+						# If out_time is before 21:00, all hours worked are before 21:00
+						before_21_count = total_hours
+					else:
+						# Calculate hours before and after 21:00
+						before_21_count = (comparison_time - start).seconds // 3600
+						after_21_count = total_hours - before_21_count
+
+					# Add to the total counters
+					total_before_21 += before_21_count
+					total_after_21 += after_21_count
+
+					# Optionally, you can store individual day's result if needed
+					daily_hours.append({
+						"attendance_date": record.attendance_date,
+						"before_21_count": before_21_count,
+						"after_21_count": after_21_count
+					})
+
+			# Now return or log the total results (outside the loop)
+			# return total_before_21*1.25 + total_after_21*1.5
+
+
+
+			if employee_doc.custom_ot_formula == "B/300" or employee_doc.custom_ot_formula == "BF/360":
 			
-# 			calculate_ot_amount = 0
-# 			actuval_amount = 0
-# 			from frappe.utils import get_datetime, get_time
+				calculate_ot_amount += base_amount * ot_hours_total
+				actuval_amount = insentve_basic * insetive_hour 
 
-# 			end_time = shift_type_doc.end_time
-# 			end_time_as_time = (datetime.datetime.min + end_time).time()
+			else:
+				actuval_amount = insentve_basic * insetive_hour * (total_before_21*1.25 + total_after_21*1.5)
+				calculate_ot_amount += base_amount * (total_before_21*1.25 + total_after_21*1.5) 
+			# return calculate_ot_amount
 
-# 			hours = 0
-# 			hours2 = 0
-# 			nine_pm = datetime.time(21, 0)
-# 			for record in attendance_records:
-# 				out_time = get_datetime(record.out_time)
+			week_off_working = 0
+			insentve_basic_amount = 0
+			working_ot_hour_in_holidays = 0
+			for record in attendance_records:
+				if record.attendance_date  in [holiday.holiday_date for holiday in holiday_list_doc.holidays]:
 				
-# 				out_time = get_time(out_time)
-    
-# 				if out_time > end_time_as_time:
-# 					if record.attendance_date not in [holiday.holiday_date for holiday in holiday_list_doc.holidays]:
-# 						# Convert the times to total minutes from midnight
-# 						out_minutes = out_time.hour * 60 + out_time.minute
-# 						nine_pm_minutes = nine_pm.hour * 60 + nine_pm.minute
-
-# 						# Check if out_time is after nine_pm (the first scenario)
-# 						if out_time > end_time_as_time:
-# 							diff_minutes = out_minutes - nine_pm_minutes
-# 							hours += diff_minutes / 60  # Convert to hours and add to total
-# 					# return end_time
-# 				if out_time > end_time_as_time:
-# 					print(record.attendance_date,"---------------------------------------")
-# 			return hours,hours2
-# 					# return out_time,
-# 			# if employee_doc.custom_ot_formula == "B/300" or employee_doc.custom_ot_formula == "BF/360":
-			
-# 			# 	calculate_ot_amount += base_amount * ot_hours_total
-# 			# 	actuval_amount = insentve_basic * insetive_hour 
-
-# 			# else:
-# 			# 	actuval_amount = insentve_basic * insetive_hour * 1.25
-# 			# 	calculate_ot_amount += base_amount *  1.25 * ot_hours_total
-
-
-# 			# week_off_working = 0
-# 			# insentve_basic_amount = 0
-# 			# working_ot_hour_in_holidays = 0
-# 			# for record in attendance_records:
-# 			# 	if record.attendance_date  in [holiday.holiday_date for holiday in holiday_list_doc.holidays]:
-				
-# 			# 		working_hours_total += record.working_hours
-# 			# 		week_off_working += record.working_hours 
-# 			# 		if employee_doc.custom_ot_formula == "B/300" or employee_doc.custom_ot_formula == "BF/360":
-# 			# 			insentve_basic_amount = insentve_basic * week_off_working
-# 			# 			working_ot_hour_in_holidays = base_amount * (working_hours_total )
-# 			# 		else:
-# 			# 			insentve_basic_amount = insentve_basic * week_off_working * 2
-# 			# 			working_ot_hour_in_holidays = base_amount * 2  * (working_hours_total )
+					working_hours_total += record.working_hours
+					week_off_working += record.working_hours 
+					if employee_doc.custom_ot_formula == "B/300" or employee_doc.custom_ot_formula == "BF/360":
+						insentve_basic_amount = insentve_basic * week_off_working
+						working_ot_hour_in_holidays = base_amount * (working_hours_total )
+					else:
+						insentve_basic_amount = insentve_basic * week_off_working * 2
+						working_ot_hour_in_holidays = base_amount * 2  * (working_hours_total )
 		
-# 			# insentve_basic_total_amount = insentve_basic_amount + actuval_amount if calculate_ot_amount != 0 else insentve_basic_amount
-# 			# amount = insentve_basic_total_amount - calculate_ot_amount -working_ot_hour_in_holidays
-# 			# return calculate_ot_amount
-# 			# return base_amount * (working_hours_total ) *1.5
-# 			# incentive_amount_funt = incentive_amount(self,amount)
-# 			# self.custom_ot_hour = (working_hours_total + ot_hours_total)
-# 			# self.custom_ot_pay_amount = calculate_ot_amount + working_ot_hour_in_holidays
+			insentve_basic_total_amount = insentve_basic_amount + actuval_amount if calculate_ot_amount != 0 else insentve_basic_amount
+			amount = insentve_basic_total_amount - calculate_ot_amount -working_ot_hour_in_holidays
+			# return calculate_ot_amount
+			# return base_amount * (working_hours_total ) *1.5
+			incentive_amount_funt = incentive_amount(self,amount)
+			self.custom_ot_hour = (working_hours_total + ot_hours_total)
+			self.custom_ot_pay_amount = calculate_ot_amount + working_ot_hour_in_holidays
 
-# 			# current_year = datetime.now().year
-# 			# current_month = datetime.now().month
-# 			# date_25th = datetime(current_year, current_month, 25)
+			current_year = datetime.now().year
+			current_month = datetime.now().month
+			date_25th = datetime(current_year, current_month, 25)
 
-# 			# formatted_date = date_25th.strftime("%Y-%m-%d")
+			formatted_date = date_25th.strftime("%Y-%m-%d")
 			
-# 			# new_additional_salary = frappe.new_doc("Additional Salary")
-# 			# new_additional_salary.update({
-# 			# 	"employee": self.employee,
-# 			# 	"company": self.company,
-# 			# 	"payroll_date": "2024-11-25",# formatted_date,
-# 			# 	"salary_component": "OT Arrears",
-# 			# 	"currency": "AED",	
-# 			# 	"amount": self.custom_ot_pay_amount,
-# 			# 	"docstatus": 1
-# 			# })
-# 			# new_additional_salary.insert(ignore_permissions=True)
+			new_additional_salary = frappe.new_doc("Additional Salary")
+			new_additional_salary.update({
+				"employee": self.employee,
+				"company": self.company,
+				"payroll_date": "2025-01-25",# formatted_date,
+				"salary_component": "OT Arrears",
+				"currency": "AED",	
+				"amount": self.custom_ot_pay_amount,
+				"docstatus": 1
+			})
+			new_additional_salary.insert(ignore_permissions=True)
 
-# 			# frappe.db.commit()
+			frappe.db.commit()
 		
-# 	except Exception as ex:
-# 		frappe.log_error(message=str(ex), title="Error in OT Calculation")
-# 		return str(ex)
+	except Exception as ex:
+		frappe.log_error(message=str(ex), title="Error in OT Calculation")
+		return str(ex)
 	
 
 
 
 
-# @frappe.whitelist()
-# def get_employee_addision_salary(self):
-# 	try:
-# 		current_year = datetime.now().year
-# 		current_month = datetime.now().month
-# 		date_25th = datetime(current_year, current_month, 25)
+@frappe.whitelist()
+def get_employee_addision_salary(self):
+	try:
+		current_year = datetime.now().year
+		current_month = datetime.now().month
+		date_25th = datetime(current_year, current_month, 25)
 
-# 		formatted_date = date_25th.strftime("%Y-%m-%d")
-# 		add_addisnal_salary = frappe.new_doc("Additional Salary")
-# 		add_addisnal_salary.update({
-# 			"employee": self.employee,
-# 			"company": self.company,
-# 			"payroll_date": "2025-01-25",# formatted_date,
-# 			"salary_component": "Attendance Allowance",
-# 			"currency": "AED",	
-# 			"amount": 100,
-# 			"docstatus": 1
-# 		})
-# 		add_addisnal_salary.insert(ignore_permissions=True)
-# 		frappe.db.commit()
-# 	except Exception as ex:
-# 		frappe.log_error(message=str(ex), title="Error in Employee Details")
-# 		return str(ex)
-
-
+		formatted_date = date_25th.strftime("%Y-%m-%d")
+		add_addisnal_salary = frappe.new_doc("Additional Salary")
+		add_addisnal_salary.update({
+			"employee": self.employee,
+			"company": self.company,
+			"payroll_date": "2025-01-25",# formatted_date,
+			"salary_component": "Attendance Allowance",
+			"currency": "AED",	
+			"amount": 100,
+			"docstatus": 1
+		})
+		add_addisnal_salary.insert(ignore_permissions=True)
+		frappe.db.commit()
+	except Exception as ex:
+		frappe.log_error(message=str(ex), title="Error in Employee Details")
+		return str(ex)
 
 
 
-# @frappe.whitelist()
-# def incentive_amount(self,amount):
-# 	try:
-# 		current_year = datetime.now().year
-# 		current_month = datetime.now().month
-# 		date_25th = datetime(current_year, current_month, 25)
 
-# 		formatted_date = date_25th.strftime("%Y-%m-%d")
-# 		add_addisnal_salary = frappe.new_doc("Additional Salary")
-# 		add_addisnal_salary.update({
-# 			"employee": self.employee,
-# 			"company": self.company,
-# 			"payroll_date": "2025-01-25",# formatted_date,
-# 			"salary_component": "Incentive",
-# 			"currency": "AED",	
-# 			"amount": amount,
-# 			"docstatus": 1
-# 		})
-# 		add_addisnal_salary.insert(ignore_permissions=True)
-# 		frappe.db.commit()
-# 	except Exception as ex:
-# 		frappe.log_error(message=str(ex), title="Error in Employee Details")
-# 		return str(ex)
+
+@frappe.whitelist()
+def incentive_amount(self,amount):
+	try:
+		if amount > 0:
+			current_year = datetime.now().year
+			current_month = datetime.now().month
+			date_25th = datetime(current_year, current_month, 25)
+
+			formatted_date = date_25th.strftime("%Y-%m-%d")
+			add_addisnal_salary = frappe.new_doc("Additional Salary")
+			add_addisnal_salary.update({
+				"employee": self.employee,
+				"company": self.company,
+				"payroll_date": "2025-01-25",# formatted_date,
+				"salary_component": "Incentive",
+				"currency": "AED",	
+				"amount": amount,
+				"docstatus": 1
+			})
+			add_addisnal_salary.insert(ignore_permissions=True)
+			frappe.db.commit()
+	except Exception as ex:
+		frappe.log_error(message=str(ex), title="Error in Employee Details")
+		return str(ex)
