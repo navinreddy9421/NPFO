@@ -27,18 +27,27 @@ frappe.ui.form.on('Employee', {
                     if (r.message) {
                         let salary_structure = r.message;
 
-                        // Clear existing custom_earnings table
+                        // Clear existing records in custom_earnings
                         frm.clear_table('custom_earnings');
 
                         // Populate custom_earnings from Salary Structure's earnings table
                         (salary_structure.earnings || []).forEach(row => {
                             let child = frm.add_child('custom_earnings');
-                            
-                            // Copy all fields dynamically
-                            Object.assign(child, row);
+
+                            // Assign values manually, ensuring all required fields are included
+                            child.salary_component = row.salary_component;
+                            child.abbr = row.abbr || '';  // Ensure abbr is assigned
+                            child.amount = row.amount;
+                            child.default_amount = row.default_amount;
+                            child.depends_on_lwp = row.depends_on_lwp;
+                            child.depends_on_payment_days = row.depends_on_payment_days || 0; // Checkbox field
+                            child.statistical_component = row.statistical_component || 0; // Checkbox field
+                            child.do_not_include_in_total = row.do_not_include_in_total || 0; // Checkbox field
+                            child.deduct_full_tax_on_selected_payroll_date = row.deduct_full_tax_on_selected_payroll_date || 0; // Checkbox field
+                            child.condition = row.condition;
                         });
 
-                        // Refresh the child table
+                        // Refresh child table to display correctly
                         frm.refresh_field('custom_earnings');
                     }
                 }
@@ -47,5 +56,11 @@ frappe.ui.form.on('Employee', {
             frm.clear_table('custom_earnings');
             frm.refresh_field('custom_earnings');
         }
+    },
+
+    before_save(frm) {
+        // Get all child table values before saving
+        let child_data = frm.doc.custom_earnings.map(row => ({ ...row }));
+        console.log("Child Table Data on Save:", child_data);
     }
 });
